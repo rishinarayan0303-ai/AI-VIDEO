@@ -21,10 +21,14 @@ const ai = new GoogleGenAI({
   },
 });
 
-// Setup upload directory
-const uploadsDir = path.join(process.cwd(), 'uploads');
+// Setup upload directory (supports Vercel /tmp directory and local uploads)
+const uploadsDir = process.env.VERCEL
+  ? path.join('/tmp', 'uploads')
+  : path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+  try {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  } catch (_) {}
 }
 
 // Storage engine for multer
@@ -183,14 +187,15 @@ function initSampleProjects() {
 initSampleProjects();
 
 // ================= API ROUTES ================= //
+const router = express.Router();
 
 // 1. Get Projects
-app.get('/api/projects', (_req, res) => {
+router.get('/projects', (_req, res) => {
   res.json(Array.from(projectsDb.values()));
 });
 
 // 2. Create Project
-app.post('/api/projects', (req, res) => {
+router.post('/projects', (req, res) => {
   const { name, presetId } = req.body;
   if (presetId) {
     const preset = SAMPLE_PRESETS.find((p) => p.id === presetId);
@@ -243,14 +248,14 @@ app.post('/api/projects', (req, res) => {
 });
 
 // 3. Get Project details
-app.get('/api/projects/:id', (req, res) => {
+router.get('/projects/:id', (req, res) => {
   const project = projectsDb.get(req.params.id);
   if (!project) return res.status(404).json({ error: 'Project not found' });
   res.json(project);
 });
 
 // 4. Update Project
-app.put('/api/projects/:id', (req, res) => {
+router.put('/projects/:id', (req, res) => {
   const project = projectsDb.get(req.params.id);
   if (!project) return res.status(404).json({ error: 'Project not found' });
 
@@ -264,13 +269,13 @@ app.put('/api/projects/:id', (req, res) => {
 });
 
 // 5. Delete Project
-app.delete('/api/projects/:id', (req, res) => {
+router.delete('/projects/:id', (req, res) => {
   projectsDb.delete(req.params.id);
   res.json({ success: true });
 });
 
 // 6. Upload file (Supports single videos and ZIP archives with multiple video clips)
-app.post('/api/upload', upload.single('file'), (req, res) => {
+router.post('/upload', upload.single('file'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
@@ -353,7 +358,7 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
 });
 
 // 7. Analyze Reference Video with Gemini AI
-app.post('/api/analyze-reference', async (req, res) => {
+router.post('/analyze-reference', async (req, res) => {
   const { projectId, referenceVideoUrl } = req.body;
   const project = projectsDb.get(projectId);
 
@@ -478,7 +483,7 @@ Provide JSON output adhering strictly to this blueprint specification:
 });
 
 // 8. Analyze Unordered Source Clips with Gemini AI (Supports Unlimited Clips via Parallel Batch Processing)
-app.post('/api/analyze-clips', async (req, res) => {
+router.post('/analyze-clips', async (req, res) => {
   const { projectId, clips } = req.body;
   const project = projectsDb.get(projectId);
 
@@ -602,7 +607,7 @@ Return JSON adhering strictly to:
 });
 
 // 9. Generate AI Timeline matching Reference Blueprint + Clips
-app.post('/api/generate-timeline', async (req, res) => {
+router.post('/generate-timeline', async (req, res) => {
   const { projectId, settings } = req.body;
   const project = projectsDb.get(projectId);
   if (!project) return res.status(404).json({ error: 'Project not found' });
@@ -782,7 +787,7 @@ Return JSON adhering to this exact schema:
 });
 
 // 10. User Feedback Loop: Modify Timeline via Natural Language
-app.post('/api/modify-timeline', async (req, res) => {
+router.post('/modify-timeline', async (req, res) => {
   const { projectId, instruction, currentTimeline } = req.body;
   const project = projectsDb.get(projectId);
   if (!project) return res.status(404).json({ error: 'Project not found' });
@@ -849,7 +854,7 @@ Return JSON in this format:
 });
 
 // 11. Render Video
-app.post('/api/render-video', (req, res) => {
+router.post('/render-video', (req, res) => {
   const { projectId, versionId } = req.body;
   const project = projectsDb.get(projectId);
   if (!project) return res.status(404).json({ error: 'Project not found' });
@@ -874,6 +879,12 @@ app.post('/api/render-video', (req, res) => {
   res.json({ renderedVideoUrl: version.renderedVideoUrl });
 });
 
+// Mount router on both /api and / for seamless compatibility
+app.use('/api', router);
+app.use('/', router);
+
+export default app;
+
 // Vite / Static setup
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
@@ -895,4 +906,6 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
