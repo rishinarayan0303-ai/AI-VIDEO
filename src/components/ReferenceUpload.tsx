@@ -25,21 +25,28 @@ export const ReferenceUpload: React.FC<ReferenceUploadProps> = ({
       onStartAnalysis('Uploading reference video...');
       const uploaded = await ApiClient.uploadFile(file, 'reference');
 
+      const videoUrl = uploaded.url || (uploaded.files && uploaded.files[0] ? uploaded.files[0].url : '');
+      const filename = uploaded.filename || (uploaded.files && uploaded.files[0] ? uploaded.files[0].filename : file.name);
+
+      if (!videoUrl) {
+        throw new Error('No valid video URL returned from upload server');
+      }
+
       onStartAnalysis('Analyzing reference video structure with Gemini AI...');
-      const res = await ApiClient.analyzeReference(project.id, uploaded.url);
+      const res = await ApiClient.analyzeReference(project.id, videoUrl);
 
       onUpdateProject({
         referenceVideo: {
-          url: uploaded.url,
-          filename: uploaded.filename,
+          url: videoUrl,
+          filename: filename,
           duration: res.blueprint.overallDuration || 30,
           blueprint: res.blueprint,
           analyzing: false,
         },
       });
-    } catch (err) {
-      console.error(err);
-      alert('Failed to upload/analyze reference video');
+    } catch (err: any) {
+      console.error('Reference upload/analysis error:', err);
+      alert(err?.message || 'Failed to upload/analyze reference video');
     } finally {
       onEndAnalysis();
     }

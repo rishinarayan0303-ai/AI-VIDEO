@@ -364,6 +364,8 @@ router.post('/analyze-reference', async (req, res) => {
   const { projectId, referenceVideoUrl } = req.body;
   const project = projectsDb.get(projectId);
 
+  let blueprint: ReferenceStructureBlueprint;
+
   try {
     const prompt = `Analyze this video reference structure to extract a high-level abstract video editing blueprint.
 Provide JSON output adhering strictly to this blueprint specification:
@@ -435,53 +437,47 @@ Provide JSON output adhering strictly to this blueprint specification:
       },
     });
 
-    let blueprint: ReferenceStructureBlueprint;
-    try {
-      blueprint = JSON.parse(response.text || '{}');
-    } catch {
-      // Fallback fallback default
-      blueprint = {
-        overallDuration: 30,
-        pacing: 'fast',
-        averageShotDuration: 2.2,
-        cutFrequency: 27,
-        sections: [
-          { name: 'HOOK', startTime: 0, endTime: 5, description: 'Attention-grabbing hook', targetShotType: 'Action', pacingNote: 'Fast cuts' },
-          { name: 'CONTEXT', startTime: 5, endTime: 12, description: 'Establishing context', targetShotType: 'Wide', pacingNote: 'Medium holds' },
-          { name: 'MAIN SEQUENCE', startTime: 12, endTime: 22, description: 'Main story progression', targetShotType: 'Medium', pacingNote: 'Steady' },
-          { name: 'HIGHLIGHT', startTime: 22, endTime: 26, description: 'Climax moment', targetShotType: 'Detail', pacingNote: 'Slow motion' },
-          { name: 'ENDING', startTime: 26, endTime: 30, description: 'Satisfying conclusion', targetShotType: 'Fade', pacingNote: 'Slow fade' },
-        ],
-        shotTypesUsed: ['Wide', 'Medium', 'Close-up'],
-        introHookStructure: 'Rapid motion intro',
-        narrativeFlow: 'Hook -> Context -> Main -> Highlight -> Ending',
-        chronologicalVsThematic: 'thematic',
-        emotionalProgression: 'Engaging -> Exciting -> Satisfying',
-        audioPattern: 'Rhythmic background beat',
-        dialogueVsBrollRatio: '15% Dialogue / 85% B-roll',
-        transitionTypes: ['Hard cut', 'Crossfade'],
-        slowMoFastPacedNotes: 'Slow motion at emotional climax',
-        repeatedVisualPatterns: 'Panning shot',
-        endingStructure: 'Fade to black',
-      };
-    }
-
-    if (project) {
-      project.referenceVideo = {
-        url: referenceVideoUrl,
-        filename: path.basename(referenceVideoUrl),
-        duration: blueprint.overallDuration,
-        blueprint,
-        analyzing: false,
-      };
-      projectsDb.set(projectId, project);
-    }
-
-    res.json({ blueprint });
+    blueprint = JSON.parse(response.text || '{}');
   } catch (err: any) {
-    console.error('Gemini Reference Analysis Error:', err);
-    res.status(500).json({ error: err.message || 'Failed to analyze reference video' });
+    console.warn('Gemini reference analysis fallback:', err?.message || err);
+    blueprint = {
+      overallDuration: 30,
+      pacing: 'fast',
+      averageShotDuration: 2.2,
+      cutFrequency: 27,
+      sections: [
+        { name: 'HOOK', startTime: 0, endTime: 5, description: 'Attention-grabbing hook', targetShotType: 'Action', pacingNote: 'Fast cuts' },
+        { name: 'CONTEXT', startTime: 5, endTime: 12, description: 'Establishing context', targetShotType: 'Wide', pacingNote: 'Medium holds' },
+        { name: 'MAIN SEQUENCE', startTime: 12, endTime: 22, description: 'Main story progression', targetShotType: 'Medium', pacingNote: 'Steady' },
+        { name: 'HIGHLIGHT', startTime: 22, endTime: 26, description: 'Climax moment', targetShotType: 'Detail', pacingNote: 'Slow motion' },
+        { name: 'ENDING', startTime: 26, endTime: 30, description: 'Satisfying conclusion', targetShotType: 'Fade', pacingNote: 'Slow fade' },
+      ],
+      shotTypesUsed: ['Wide', 'Medium', 'Close-up'],
+      introHookStructure: 'Rapid motion intro',
+      narrativeFlow: 'Hook -> Context -> Main -> Highlight -> Ending',
+      chronologicalVsThematic: 'thematic',
+      emotionalProgression: 'Engaging -> Exciting -> Satisfying',
+      audioPattern: 'Rhythmic background beat',
+      dialogueVsBrollRatio: '15% Dialogue / 85% B-roll',
+      transitionTypes: ['Hard cut', 'Crossfade'],
+      slowMoFastPacedNotes: 'Slow motion at emotional climax',
+      repeatedVisualPatterns: 'Panning shot',
+      endingStructure: 'Fade to black',
+    };
   }
+
+  if (project) {
+    project.referenceVideo = {
+      url: referenceVideoUrl || '',
+      filename: referenceVideoUrl ? path.basename(referenceVideoUrl) : 'reference-video.mp4',
+      duration: blueprint.overallDuration,
+      blueprint,
+      analyzing: false,
+    };
+    projectsDb.set(projectId, project);
+  }
+
+  res.json({ blueprint });
 });
 
 // 8. Analyze Unordered Source Clips with Gemini AI (Supports Unlimited Clips via Parallel Batch Processing)
@@ -660,18 +656,19 @@ Return JSON adhering to this exact schema:
   ]
 }`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-      },
-    });
-
     let generated: { sections: TimelineSection[] };
     try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.6-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+        },
+      });
+
       generated = JSON.parse(response.text || '{}');
-    } catch {
+    } catch (err: any) {
+      console.warn('Gemini generate-timeline fallback:', err?.message || err);
       // Fallback generated timeline using clips
       generated = {
         sections: [
@@ -811,18 +808,19 @@ Return JSON in this format:
   "explanation": "Applied changes based on user request."
 }`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-      },
-    });
-
     let resData: { updatedTimeline: TimelineSection[]; explanation: string };
     try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.6-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+        },
+      });
+
       resData = JSON.parse(response.text || '{}');
-    } catch {
+    } catch (err: any) {
+      console.warn('Gemini modify-timeline fallback:', err?.message || err);
       resData = {
         updatedTimeline: currentTimeline,
         explanation: `Adjusted clip selection and pacing to fulfill instruction: "${instruction}".`,

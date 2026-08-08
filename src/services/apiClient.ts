@@ -48,7 +48,10 @@ export class ApiClient {
       method: 'POST',
       body: formData,
     });
-    if (!res.ok) throw new Error('Failed to upload video or zip archive');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to upload video or archive');
+    }
     return res.json();
   }
 
@@ -58,7 +61,10 @@ export class ApiClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId, referenceVideoUrl }),
     });
-    if (!res.ok) throw new Error('Failed to analyze reference video');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to analyze reference video');
+    }
     return res.json();
   }
 
@@ -68,7 +74,10 @@ export class ApiClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId, clips }),
     });
-    if (!res.ok) throw new Error('Failed to analyze source clips');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to analyze source clips');
+    }
     return res.json();
   }
 
@@ -78,7 +87,10 @@ export class ApiClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId, settings }),
     });
-    if (!res.ok) throw new Error('Failed to generate AI timeline');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to generate AI timeline');
+    }
     return res.json();
   }
 
@@ -88,7 +100,10 @@ export class ApiClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId, instruction, currentTimeline }),
     });
-    if (!res.ok) throw new Error('Failed to modify timeline with prompt');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to modify timeline with prompt');
+    }
     return res.json();
   }
 
@@ -98,7 +113,10 @@ export class ApiClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId, versionId }),
     });
-    if (!res.ok) throw new Error('Failed to render video');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to render video');
+    }
     return res.json();
   }
 }
