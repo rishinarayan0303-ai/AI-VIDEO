@@ -3,7 +3,6 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import AdmZip from 'adm-zip';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { Project, ReferenceStructureBlueprint, ClipMetadata, EditingSettings, TimelineSection, ProjectVersion } from './src/types';
 import { SAMPLE_PRESETS } from './src/data/samplePresets';
@@ -888,6 +887,7 @@ export default app;
 // Vite / Static setup
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
