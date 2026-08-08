@@ -1,0 +1,6 @@
+{
+  "name": "AI Video Editor",
+  "description": "AI-powered video editor that analyzes reference videos and source clips to generate structured timelines and render polished videos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
