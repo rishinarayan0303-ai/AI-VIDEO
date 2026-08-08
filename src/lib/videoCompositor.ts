@@ -13,7 +13,7 @@ export interface PlayheadState {
 export class VideoCompositor {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
-  private videoElements: Map<string, HTMLVideoElement> = new Map();
+  private mediaElements: Map<string, HTMLVideoElement | HTMLImageElement> = new Map();
   private timeline: TimelineSection[] = [];
   private sourceClipsMap: Map<string, ClipMetadata> = new Map();
   private flattenedClips: {
@@ -41,7 +41,7 @@ export class VideoCompositor {
     this.timeline = timeline;
     this.sourceClipsMap = new Map(sourceClips.map((c) => [c.clip_id, c]));
     this.buildFlattenedTimeline();
-    this.preloadVideos();
+    this.preloadMedia();
   }
 
   private buildFlattenedTimeline() {
@@ -67,17 +67,31 @@ export class VideoCompositor {
     this.totalDuration = currentTime;
   }
 
-  private preloadVideos() {
+  private isImageUrl(url: string, name: string): boolean {
+    const ext = (url + name).toLowerCase();
+    return /\.(jpg|jpeg|png|webp|heic|heif|bmp|gif|svg)(\?.*)?$/i.test(ext);
+  }
+
+  private preloadMedia() {
     for (const entry of this.flattenedClips) {
       const clipId = entry.sourceClip.clip_id;
-      if (!this.videoElements.has(clipId)) {
-        const video = document.createElement('video');
-        video.crossOrigin = 'anonymous';
-        video.src = entry.sourceClip.url;
-        video.preload = 'auto';
-        video.muted = false;
-        video.playsInline = true;
-        this.videoElements.set(clipId, video);
+      if (!this.mediaElements.has(clipId)) {
+        const isImg = this.isImageUrl(entry.sourceClip.url, entry.sourceClip.originalName);
+
+        if (isImg) {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.src = entry.sourceClip.url;
+          this.mediaElements.set(clipId, img);
+        } else {
+          const video = document.createElement('video');
+          video.crossOrigin = 'anonymous';
+          video.src = entry.sourceClip.url;
+          video.preload = 'auto';
+          video.muted = false;
+          video.playsInline = true;
+          this.mediaElements.set(clipId, video);
+        }
       }
     }
   }
@@ -126,7 +140,11 @@ export class VideoCompositor {
       this.animFrameId = null;
     }
     // Pause video elements
-    this.videoElements.forEach((video) => video.pause());
+    this.mediaElements.forEach((el) => {
+      if (el instanceof HTMLVideoElement) {
+        el.pause();
+      }
+    });
     this.emitPlayheadState();
   }
 
@@ -152,55 +170,94 @@ export class VideoCompositor {
 
     const { item, section, sourceClip, timelineStart } = activeEntry;
     const clipOffset = this.currentTimelineTime - timelineStart;
+    const clipDuration = activeEntry.timelineEnd - timelineStart;
     const sourceTime = item.startTime + clipOffset;
 
-    const videoEl = this.videoElements.get(sourceClip.clip_id);
-    if (!videoEl) {
+    const mediaEl = this.mediaElements.get(sourceClip.clip_id);
+    if (!mediaEl) {
       this.drawPlaceholder(`Loading clip ${sourceClip.originalName}...`);
       return;
     }
 
-    // Update video element playback position if needed
-    if (Math.abs(videoEl.currentTime - sourceTime) > 0.3) {
-      videoEl.currentTime = sourceTime;
-    }
+    if (mediaEl instanceof HTMLImageElement) {
+      if (mediaEl.complete && mediaEl.naturalWidth > 0) {
+        const imgRatio = mediaEl.naturalWidth / mediaEl.naturalHeight;
+        const cRatio = width / height;
+        let drawW = width;
+        let drawH = height;
+        let drawX = 0;
+        let drawY = 0;
 
-    if (this.isPlaying && videoEl.paused) {
-      videoEl.play().catch(() => {});
-    }
+        if (imgRatio > cRatio) {
+          drawH = width / imgRatio;
+          drawY = (height - drawH) / 2;
+        } else {
+          drawW = height * imgRatio;
+          drawX = (width - drawW) / 2;
+        }
 
-    // Draw video frame to canvas
-    if (videoEl.readyState >= 2) {
-      // Calculate aspect ratio fit (letterbox / fill)
-      const vRatio = videoEl.videoWidth / videoEl.videoHeight;
-      const cRatio = width / height;
-      let drawW = width;
-      let drawH = height;
-      let drawX = 0;
-      let drawY = 0;
+        // Apply smooth Ken Burns zoom effect for photos
+        const progress = Math.min(1, Math.max(0, clipOffset / (clipDuration || 1)));
+        const scale = 1.0 + progress * 0.08;
 
-      if (vRatio > cRatio) {
-        drawH = width / vRatio;
-        drawY = (height - drawH) / 2;
+        const transitionProgress = this.calculateTransitionProgress(activeEntry, clipOffset);
+        this.ctx.save();
+        if (transitionProgress < 1 && (item.transitionToNext === 'crossfade' || item.transitionToNext === 'fade-black')) {
+          this.ctx.globalAlpha = transitionProgress;
+        }
+
+        // Center zoom transform
+        this.ctx.translate(width / 2, height / 2);
+        this.ctx.scale(scale, scale);
+        this.ctx.translate(-width / 2, -height / 2);
+
+        this.ctx.drawImage(mediaEl, drawX, drawY, drawW, drawH);
+        this.ctx.restore();
       } else {
-        drawW = height * vRatio;
-        drawX = (width - drawW) / 2;
+        this.drawFallbackClipCard(sourceClip, section.name, item);
+      }
+    } else {
+      const videoEl = mediaEl as HTMLVideoElement;
+      // Update video element playback position if needed
+      if (Math.abs(videoEl.currentTime - sourceTime) > 0.3) {
+        videoEl.currentTime = sourceTime;
       }
 
-      // Check transition effect from previous clip
-      const transitionProgress = this.calculateTransitionProgress(activeEntry, clipOffset);
-      this.ctx.save();
-      if (transitionProgress < 1 && item.transitionToNext === 'crossfade') {
-        this.ctx.globalAlpha = transitionProgress;
-      } else if (item.transitionToNext === 'fade-black') {
-        this.ctx.globalAlpha = transitionProgress;
+      if (this.isPlaying && videoEl.paused) {
+        videoEl.play().catch(() => {});
       }
-      
-      this.ctx.drawImage(videoEl, drawX, drawY, drawW, drawH);
-      this.ctx.restore();
-    } else {
-      // Render fallback clip thumbnail or gradient card
-      this.drawFallbackClipCard(sourceClip, section.name, item);
+
+      // Draw video frame to canvas
+      if (videoEl.readyState >= 2) {
+        // Calculate aspect ratio fit (letterbox / fill)
+        const vRatio = videoEl.videoWidth / videoEl.videoHeight;
+        const cRatio = width / height;
+        let drawW = width;
+        let drawH = height;
+        let drawX = 0;
+        let drawY = 0;
+
+        if (vRatio > cRatio) {
+          drawH = width / vRatio;
+          drawY = (height - drawH) / 2;
+        } else {
+          drawW = height * vRatio;
+          drawX = (width - drawW) / 2;
+        }
+
+        // Check transition effect from previous clip
+        const transitionProgress = this.calculateTransitionProgress(activeEntry, clipOffset);
+        this.ctx.save();
+        if (transitionProgress < 1 && (item.transitionToNext === 'crossfade' || item.transitionToNext === 'fade-black')) {
+          this.ctx.globalAlpha = transitionProgress;
+        }
+
+        this.ctx.drawImage(videoEl, drawX, drawY, drawW, drawH);
+        this.ctx.restore();
+      } else {
+        // Render fallback clip thumbnail or gradient card
+        this.drawFallbackClipCard(sourceClip, section.name, item);
+      }
     }
 
     // Render Subtitles / Overlay Text
@@ -314,10 +371,14 @@ export class VideoCompositor {
 
   public destroy() {
     this.pause();
-    this.videoElements.forEach((v) => {
-      v.pause();
-      v.src = '';
+    this.mediaElements.forEach((el) => {
+      if (el instanceof HTMLVideoElement) {
+        el.pause();
+        el.src = '';
+      } else if (el instanceof HTMLImageElement) {
+        el.src = '';
+      }
     });
-    this.videoElements.clear();
+    this.mediaElements.clear();
   }
 }

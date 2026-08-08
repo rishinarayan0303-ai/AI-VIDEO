@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import AdmZip from 'adm-zip';
+import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { Project, ReferenceStructureBlueprint, ClipMetadata, EditingSettings, TimelineSection, ProjectVersion } from './src/types';
 import { SAMPLE_PRESETS } from './src/data/samplePresets';
@@ -45,6 +46,8 @@ const upload = multer({
 });
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.webm', '.avi', '.mkv', '.m4v', '.3gp', '.ts', '.flv', '.wmv', '.m2ts', '.ogv']);
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.bmp', '.gif', '.tiff', '.svg']);
+const MEDIA_EXTENSIONS = new Set([...VIDEO_EXTENSIONS, ...IMAGE_EXTENSIONS]);
 
 app.use(express.json({ limit: '50mb' }));
 app.use('/uploads', express.static(uploadsDir));
@@ -298,7 +301,7 @@ router.post('/upload', upload.single('file'), (req, res) => {
         }
 
         const entryExt = path.extname(entry.entryName).toLowerCase();
-        if (VIDEO_EXTENSIONS.has(entryExt)) {
+        if (MEDIA_EXTENSIONS.has(entryExt)) {
           const buffer = entry.getData();
           const cleanBase = path.basename(entry.entryName).replace(/[^a-zA-Z0-9_.-]/g, '_');
           const uniqueName = `extracted-${Date.now()}-${Math.round(Math.random() * 1e8)}-${cleanBase}`;
@@ -321,7 +324,7 @@ router.post('/upload', upload.single('file'), (req, res) => {
 
       if (extractedFiles.length === 0) {
         return res.status(400).json({
-          error: 'The ZIP archive contained no supported video files (.mp4, .mov, .webm, .avi, .mkv, etc.).',
+          error: 'The ZIP archive contained no supported photo or video files (.mp4, .mov, .jpg, .png, .webm, etc.).',
         });
       }
 
@@ -887,7 +890,6 @@ export default app;
 // Vite / Static setup
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
