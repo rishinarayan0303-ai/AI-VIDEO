@@ -42,14 +42,15 @@ const storage = multer.diskStorage({
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB limit for zip archives & high-res videos
+  limits: { fileSize: 10 * 1024 * 1024 * 1024 }, // 10GB limit for large video archives & high-res files
 });
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.webm', '.avi', '.mkv', '.m4v', '.3gp', '.ts', '.flv', '.wmv', '.m2ts', '.ogv']);
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.bmp', '.gif', '.tiff', '.svg']);
 const MEDIA_EXTENSIONS = new Set([...VIDEO_EXTENSIONS, ...IMAGE_EXTENSIONS]);
 
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '500mb' }));
+app.use(express.urlencoded({ limit: '500mb', extended: true }));
 app.use('/uploads', express.static(uploadsDir));
 
 // In-memory persistent database for projects during container session
@@ -281,6 +282,9 @@ router.post('/upload', (req, res) => {
   upload.single('file')(req, res, (err) => {
     if (err) {
       console.error('Multer Upload Error:', err);
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File is too large. Maximum single upload limit is 10GB.' });
+      }
       return res.status(400).json({ error: err.message || 'File upload failed' });
     }
     if (!req.file) {
