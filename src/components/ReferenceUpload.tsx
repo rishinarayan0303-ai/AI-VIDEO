@@ -100,7 +100,7 @@ export const ReferenceUpload: React.FC<ReferenceUploadProps> = ({
         >
           <input
             type="file"
-            accept="video/*,.zip,application/zip,application/x-zip-compressed"
+            accept="video/*,image/*,.zip,application/zip,application/x-zip-compressed,.png,.jpg,.jpeg,.webp"
             onChange={(e) => {
               if (e.target.files && e.target.files[0]) {
                 handleFileUpload(e.target.files[0]);

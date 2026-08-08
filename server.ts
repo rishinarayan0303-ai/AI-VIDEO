@@ -276,86 +276,96 @@ router.delete('/projects/:id', (req, res) => {
   res.json({ success: true });
 });
 
-// 6. Upload file (Supports single videos and ZIP archives with multiple video clips)
-router.post('/upload', upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded' });
-  }
+// 6. Upload file (Supports single videos/photos and ZIP archives with multiple media files)
+router.post('/upload', (req, res) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('Multer Upload Error:', err);
+      return res.status(400).json({ error: err.message || 'File upload failed' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file was uploaded' });
+    }
 
-  const ext = path.extname(req.file.originalname).toLowerCase();
-  const isZip = ext === '.zip' || req.file.mimetype.includes('zip');
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    const isZip =
+      ext === '.zip' ||
+      req.file.mimetype.includes('zip') ||
+      req.file.mimetype.includes('compressed') ||
+      req.file.mimetype.includes('archive');
 
-  if (isZip) {
-    try {
-      const zip = new AdmZip(req.file.path);
-      const zipEntries = zip.getEntries();
-      const extractedFiles: Array<{ url: string; filename: string; originalName: string; size: number }> = [];
+    if (isZip) {
+      try {
+        const zip = new AdmZip(req.file.path);
+        const zipEntries = zip.getEntries();
+        const extractedFiles: Array<{ url: string; filename: string; originalName: string; size: number }> = [];
 
-      for (const entry of zipEntries) {
-        if (
-          entry.isDirectory ||
-          entry.entryName.startsWith('__MACOSX') ||
-          path.basename(entry.entryName).startsWith('.')
-        ) {
-          continue;
+        for (const entry of zipEntries) {
+          if (
+            entry.isDirectory ||
+            entry.entryName.startsWith('__MACOSX') ||
+            path.basename(entry.entryName).startsWith('.')
+          ) {
+            continue;
+          }
+
+          const entryExt = path.extname(entry.entryName).toLowerCase();
+          if (MEDIA_EXTENSIONS.has(entryExt)) {
+            const buffer = entry.getData();
+            const cleanBase = path.basename(entry.entryName).replace(/[^a-zA-Z0-9_.-]/g, '_');
+            const uniqueName = `extracted-${Date.now()}-${Math.round(Math.random() * 1e8)}-${cleanBase}`;
+            const destPath = path.join(uploadsDir, uniqueName);
+
+            fs.writeFileSync(destPath, buffer);
+            extractedFiles.push({
+              url: `/uploads/${uniqueName}`,
+              filename: uniqueName,
+              originalName: path.basename(entry.entryName),
+              size: buffer.length,
+            });
+          }
         }
 
-        const entryExt = path.extname(entry.entryName).toLowerCase();
-        if (MEDIA_EXTENSIONS.has(entryExt)) {
-          const buffer = entry.getData();
-          const cleanBase = path.basename(entry.entryName).replace(/[^a-zA-Z0-9_.-]/g, '_');
-          const uniqueName = `extracted-${Date.now()}-${Math.round(Math.random() * 1e8)}-${cleanBase}`;
-          const destPath = path.join(uploadsDir, uniqueName);
+        // Remove uploaded zip file after extraction
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (_) {}
 
-          fs.writeFileSync(destPath, buffer);
-          extractedFiles.push({
-            url: `/uploads/${uniqueName}`,
-            filename: uniqueName,
-            originalName: path.basename(entry.entryName),
-            size: buffer.length,
+        if (extractedFiles.length === 0) {
+          return res.status(400).json({
+            error: 'The ZIP archive contained no supported photo or video files (.mp4, .mov, .jpg, .png, .webm, etc.).',
           });
         }
-      }
 
-      // Remove uploaded zip file after extraction
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch (_) {}
-
-      if (extractedFiles.length === 0) {
-        return res.status(400).json({
-          error: 'The ZIP archive contained no supported photo or video files (.mp4, .mov, .jpg, .png, .webm, etc.).',
+        return res.json({
+          files: extractedFiles,
+          url: extractedFiles[0].url,
+          filename: extractedFiles[0].filename,
+          originalName: req.file.originalname,
+          isZip: true,
+          extractedCount: extractedFiles.length,
         });
+      } catch (err: any) {
+        console.error('Error extracting zip file:', err);
+        return res.status(500).json({ error: 'Failed to extract ZIP archive: ' + (err.message || 'Corrupted archive') });
       }
-
-      return res.json({
-        files: extractedFiles,
-        url: extractedFiles[0].url,
-        filename: extractedFiles[0].filename,
-        originalName: req.file.originalname,
-        isZip: true,
-        extractedCount: extractedFiles.length,
-      });
-    } catch (err: any) {
-      console.error('Error extracting zip file:', err);
-      return res.status(500).json({ error: 'Failed to extract ZIP archive: ' + (err.message || 'Corrupted archive') });
     }
-  }
 
-  const fileUrl = `/uploads/${req.file.filename}`;
-  res.json({
-    url: fileUrl,
-    filename: req.file.filename,
-    originalName: req.file.originalname,
-    size: req.file.size,
-    files: [
-      {
-        url: fileUrl,
-        filename: req.file.filename,
-        originalName: req.file.originalname,
-        size: req.file.size,
-      },
-    ],
+    const fileUrl = `/uploads/${req.file.filename}`;
+    res.json({
+      url: fileUrl,
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      size: req.file.size,
+      files: [
+        {
+          url: fileUrl,
+          filename: req.file.filename,
+          originalName: req.file.originalname,
+          size: req.file.size,
+        },
+      ],
+    });
   });
 });
 

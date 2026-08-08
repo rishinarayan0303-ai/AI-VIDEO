@@ -212,7 +212,7 @@ export const ClipsUpload: React.FC<ClipsUploadProps> = ({
       >
         <input
           type="file"
-          accept="video/*,.zip,application/zip,application/x-zip-compressed,.rar,.7z"
+          accept="video/*,image/*,.zip,application/zip,application/x-zip-compressed,.rar,.7z,.png,.jpg,.jpeg,.webp,.heic,.heif"
           multiple
           onChange={(e) => {
             if (e.target.files && e.target.files.length > 0) {
@@ -231,10 +231,10 @@ export const ClipsUpload: React.FC<ClipsUploadProps> = ({
             </div>
           </div>
           <p className="text-xs font-semibold text-zinc-200">
-            Drag & Drop Multiple Videos or <span className="text-indigo-400 underline">Upload ZIP Archive</span>
+            Drag & Drop Photos & Videos or <span className="text-indigo-400 underline">Upload ZIP Archive</span>
           </p>
           <p className="text-[11px] text-zinc-500 max-w-lg">
-            Supports unlimited clips! Upload <strong>.mp4, .mov, .webm</strong> or a <strong>.zip archive</strong> containing dozens/hundreds of clips. Gemini AI will analyze and index every clip in parallel.
+            Supports unlimited files! Upload photos (<strong>.jpg, .png, .webp</strong>), videos (<strong>.mp4, .mov, .webm</strong>) or a <strong>.zip archive</strong> containing your media library.
           </p>
         </div>
       </div>
