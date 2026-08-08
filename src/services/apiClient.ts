@@ -49,8 +49,23 @@ export class ApiClient {
       body: formData,
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to upload video or archive');
+      let errorMsg = '';
+      try {
+        const text = await res.text();
+        try {
+          const json = JSON.parse(text);
+          errorMsg = json.error || json.message;
+        } catch {
+          if (text) {
+            if (res.status === 413 || text.includes('413') || text.toLowerCase().includes('payload too large')) {
+              errorMsg = 'File is too large for upload limit. Please try a smaller file or uncompressed video file.';
+            } else {
+              errorMsg = text.replace(/<[^>]*>/g, '').trim().slice(0, 200);
+            }
+          }
+        }
+      } catch (_) {}
+      throw new Error(errorMsg || `Upload failed with status ${res.status} (${res.statusText || 'Error'})`);
     }
     return res.json();
   }

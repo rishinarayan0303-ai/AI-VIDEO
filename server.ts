@@ -292,11 +292,8 @@ router.post('/upload', (req, res) => {
     }
 
     const ext = path.extname(req.file.originalname).toLowerCase();
-    const isZip =
-      ext === '.zip' ||
-      req.file.mimetype.includes('zip') ||
-      req.file.mimetype.includes('compressed') ||
-      req.file.mimetype.includes('archive');
+    // Only treat as ZIP if file extension is explicitly .zip
+    const isZip = ext === '.zip';
 
     if (isZip) {
       try {
@@ -315,18 +312,22 @@ router.post('/upload', (req, res) => {
 
           const entryExt = path.extname(entry.entryName).toLowerCase();
           if (MEDIA_EXTENSIONS.has(entryExt)) {
-            const buffer = entry.getData();
-            const cleanBase = path.basename(entry.entryName).replace(/[^a-zA-Z0-9_.-]/g, '_');
-            const uniqueName = `extracted-${Date.now()}-${Math.round(Math.random() * 1e8)}-${cleanBase}`;
-            const destPath = path.join(uploadsDir, uniqueName);
+            try {
+              const buffer = entry.getData();
+              const cleanBase = path.basename(entry.entryName).replace(/[^a-zA-Z0-9_.-]/g, '_');
+              const uniqueName = `extracted-${Date.now()}-${Math.round(Math.random() * 1e8)}-${cleanBase}`;
+              const destPath = path.join(uploadsDir, uniqueName);
 
-            fs.writeFileSync(destPath, buffer);
-            extractedFiles.push({
-              url: `/uploads/${uniqueName}`,
-              filename: uniqueName,
-              originalName: path.basename(entry.entryName),
-              size: buffer.length,
-            });
+              fs.writeFileSync(destPath, buffer);
+              extractedFiles.push({
+                url: `/uploads/${uniqueName}`,
+                filename: uniqueName,
+                originalName: path.basename(entry.entryName),
+                size: buffer.length,
+              });
+            } catch (entryErr) {
+              console.warn(`Failed to extract zip entry ${entry.entryName}:`, entryErr);
+            }
           }
         }
 
@@ -351,7 +352,7 @@ router.post('/upload', (req, res) => {
         });
       } catch (err: any) {
         console.error('Error extracting zip file:', err);
-        return res.status(500).json({ error: 'Failed to extract ZIP archive: ' + (err.message || 'Corrupted archive') });
+        return res.status(400).json({ error: 'Failed to extract ZIP archive: ' + (err.message || 'Corrupted archive') });
       }
     }
 
